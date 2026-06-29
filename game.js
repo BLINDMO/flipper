@@ -363,9 +363,12 @@ const NPC_LINES = {
 };
 
 const NEIGHBORHOODS = [
-  { id:'riverside',  label:'Riverside',      icon:'ph-house',       x:'25%', y:'30%', cost:5,  phase:'garage',  color:'#10B981' },
-  { id:'oldtown',    label:'Old Town',        icon:'ph-buildings',   x:'62%', y:'22%', cost:8,  phase:'garage',  color:'#F59E0B' },
-  { id:'sunset',     label:'Sunset Heights',  icon:'ph-house-line',  x:'78%', y:'58%', cost:10, phase:'garage',  color:'#34D399' },
+  { id:'riverside',  label:'Riverside',      icon:'ph-house',       x:'25%', y:'30%', cost:5,  phase:'garage',  color:'#10B981',
+    wealth:1, wealthLabel:'Working Class', wealthDesc:'A modest neighborhood. Older household items and everyday finds. The occasional hidden gem.', houseMin:1, houseMax:4 },
+  { id:'oldtown',    label:'Old Town',        icon:'ph-buildings',   x:'62%', y:'22%', cost:8,  phase:'garage',  color:'#F59E0B',
+    wealth:2, wealthLabel:'Middle Class', wealthDesc:'Comfortable older homes. Vintage furniture, books, and collectibles are common here.', houseMin:2, houseMax:5 },
+  { id:'sunset',     label:'Sunset Heights',  icon:'ph-house-line',  x:'78%', y:'58%', cost:10, phase:'garage',  color:'#34D399',
+    wealth:3, wealthLabel:'Upper Middle', wealthDesc:'Upscale suburb. Quality items with higher asking prices. Rare finds surface here.', houseMin:1, houseMax:3 },
   { id:'downtown',   label:'The Estates',     icon:'ph-bank',        x:'38%', y:'62%', cost:15, phase:'estate',  color:'#C084FC', unlockAt: CONFIG.UNLOCK_ESTATE },
   { id:'industrial', label:'Industrial Row',  icon:'ph-warehouse',   x:'58%', y:'82%', cost:20, phase:'auction', color:'#F59E0B', unlockAt: CONFIG.UNLOCK_AUCTION },
 ];
@@ -396,6 +399,7 @@ function newGame() {
 // ── SCREEN ROUTER ───────────────────────────────────────────────────
 const SCREEN_INITS = {
   map:           initMap,
+  boxes:         initBoxes,
   sale:          initSale,
   'pack-pull':   initPackPull,
   haggle:        initHaggle,
@@ -447,13 +451,54 @@ function shuffle(a) {
 function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
 function pick(arr)    { return arr[Math.floor(Math.random() * arr.length)]; }
 
-function generateSaleItems(phase, count) {
+function generateSaleItems(phase, count, wealth = 2) {
+  const wMap = {
+    1: { common: 8, uncommon: 2, rare: 0.3, legendary: 0 },
+    2: { common: 5, uncommon: 3, rare: 1.5, legendary: 0.3 },
+    3: { common: 2, uncommon: 3, rare: 3, legendary: 1 },
+  };
+  const w = (phase === 'garage')
+    ? (wMap[wealth] || wMap[2])
+    : G.cash < 200
+      ? { common: 6, uncommon: 3, rare: 1, legendary: 0.2 }
+      : G.cash < 600
+        ? { common: 4, uncommon: 3, rare: 2, legendary: 0.5 }
+        : G.cash < 2000
+          ? { common: 2, uncommon: 3, rare: 3, legendary: 1 }
+          : { common: 1, uncommon: 2, rare: 3, legendary: 2 };
+
   const pool = ITEM_DB.filter(t => {
     if (!t.phases.includes(phase)) return false;
     if (t.ultraRare) return Math.random() < 0.005;
     return true;
   });
-  return shuffle(pool).slice(0, count).map(createItem);
+
+  const weighted = [];
+  pool.forEach(item => {
+    const weight = Math.round((w[item.rarity] || 1) * 10);
+    for (let i = 0; i < weight; i++) weighted.push(item);
+  });
+
+  shuffle(weighted);
+  const seen = new Set();
+  const selected = [];
+  for (const item of weighted) {
+    if (!seen.has(item.id) && selected.length < count) {
+      seen.add(item.id);
+      selected.push(item);
+    }
+  }
+
+  // Guarantee at least 1 affordable item early game
+  if (G.cash < 300 && selected.length > 1) {
+    const hasAffordable = selected.some(it => it.baseEMV * 0.7 <= G.cash * 0.6);
+    if (!hasAffordable) {
+      const cheap = pool.filter(t => t.rarity === 'common' && t.baseEMV < 50);
+      if (cheap.length) selected[selected.length - 1] = cheap[Math.floor(Math.random() * cheap.length)];
+    }
+  }
+
+  return selected.map(createItem);
 }
 function generateAuctionUnit(phase) {
   const count = 6 + Math.floor(Math.random() * 5); // 6-10 items
@@ -564,6 +609,10 @@ function renderPhaseProgress() {
   }
 }
 function visitNeighborhood(n) {
+  if (n.phase === 'garage') {
+    showNeighborhoodInfo(n);
+    return;
+  }
   if (G.cash <= n.cost) { showToast('Not enough cash for travel!', 'danger'); return; }
   G.cash -= n.cost;
   updateHUD();
@@ -571,7 +620,7 @@ function visitNeighborhood(n) {
     G.currentAuctionNeighborhood = n;
     showScreen('auction-list');
   } else {
-    const count = n.phase === 'estate' ? 5 + Math.floor(Math.random() * 4) : 3 + Math.floor(Math.random() * 4);
+    const count = 5 + Math.floor(Math.random() * 4);
     G.currentSale = {
       location: n,
       items: generateSaleItems(n.phase, count),
@@ -582,12 +631,206 @@ function visitNeighborhood(n) {
   }
 }
 
+function showNeighborhoodInfo(n) {
+  if (G.cash <= n.cost) { showToast('Not enough cash for travel!', 'danger'); return; }
+  document.getElementById('nbhood-name').textContent = n.label.toUpperCase();
+  document.getElementById('nbhood-wealth-label').textContent = n.wealthLabel || '';
+  document.getElementById('nbhood-gas').textContent = `$${n.cost} gas`;
+  document.getElementById('nbhood-houses').textContent = `${n.houseMin}–${n.houseMax} houses`;
+  document.getElementById('nbhood-desc').textContent = n.wealthDesc || '';
+  const dots = document.getElementById('nbhood-wealth-dots');
+  dots.innerHTML = [1,2,3].map(i =>
+    `<div class="nbhood-wealth-dot${i <= (n.wealth||1) ? ' lit' : ''}"></div>`
+  ).join('');
+  G._pendingNeighborhood = n;
+  const sheet = document.getElementById('neighborhood-sheet');
+  const backdrop = document.getElementById('nbhood-sheet-backdrop');
+  sheet.hidden = false;
+  backdrop.hidden = false;
+  requestAnimationFrame(() => sheet.classList.add('visible'));
+}
+
+function hideNeighborhoodInfo() {
+  const sheet = document.getElementById('neighborhood-sheet');
+  const backdrop = document.getElementById('nbhood-sheet-backdrop');
+  sheet.classList.remove('visible');
+  setTimeout(() => {
+    sheet.hidden = true;
+    backdrop.hidden = true;
+  }, 350);
+  G._pendingNeighborhood = null;
+}
+
+function startTravel(n) {
+  G.cash -= n.cost;
+  updateHUD();
+  hideNeighborhoodInfo();
+  setTimeout(() => {
+    const overlay = document.getElementById('travel-overlay');
+    document.getElementById('travel-dest-name').textContent = n.label.toUpperCase();
+    overlay.hidden = false;
+    setTimeout(() => {
+      overlay.style.opacity = '0';
+      setTimeout(() => {
+        overlay.hidden = true;
+        overlay.style.opacity = '';
+        enterNeighborhood(n);
+      }, 300);
+    }, 2500);
+  }, 400);
+}
+
+function enterNeighborhood(n) {
+  const numHouses = n.houseMin + Math.floor(Math.random() * (n.houseMax - n.houseMin + 1));
+  const boxes = Array.from({ length: numHouses }, (_, i) => {
+    const itemCount = 1 + Math.floor(Math.random() * 5);
+    return { id: i, opened: false, items: generateSaleItems(n.phase, itemCount, n.wealth) };
+  });
+  G.currentSale = {
+    location: n, isBoxFlow: true,
+    boxes, openBoxIdx: null, keptItems: [], items: [], packPullIdx: 0,
+  };
+  showScreen('boxes');
+}
+
+function initBoxes() {
+  const s = G.currentSale;
+  document.getElementById('boxes-location-name').textContent = s.location.label.toUpperCase();
+  document.getElementById('boxes-block-label').textContent =
+    `${s.boxes.length} HOUSE${s.boxes.length !== 1 ? 'S' : ''} ON THIS BLOCK`;
+  document.getElementById('box-items-panel').hidden = true;
+  document.getElementById('boxes-done-panel').hidden = true;
+  renderBoxRow();
+}
+
+function renderBoxRow() {
+  const s = G.currentSale;
+  const row = document.getElementById('boxes-house-row');
+  row.innerHTML = s.boxes.map((box, i) => `
+    <div class="house-box${box.opened ? ' visited' : ''}" data-idx="${i}">
+      <div class="house-box-icon">
+        <i class="ph-bold ${box.opened ? 'ph-check-circle' : 'ph-house'}"></i>
+      </div>
+      <div class="house-box-label">House ${i + 1}</div>
+    </div>
+  `).join('');
+  row.querySelectorAll('.house-box').forEach(el => {
+    el.addEventListener('click', () => openBox(+el.dataset.idx));
+  });
+}
+
+function openBox(boxIdx) {
+  const s = G.currentSale;
+  const box = s.boxes[boxIdx];
+  s.openBoxIdx = boxIdx;
+  box.opened = true;
+  renderBoxRow();
+  document.getElementById('box-items-header').textContent =
+    `HOUSE ${boxIdx + 1} · ${box.items.length} ITEM${box.items.length !== 1 ? 'S' : ''}`;
+  renderBoxItems(boxIdx);
+  document.getElementById('box-items-panel').hidden = false;
+  document.getElementById('boxes-done-panel').hidden = true;
+}
+
+function renderBoxItems(boxIdx) {
+  const box = G.currentSale.boxes[boxIdx];
+  const grid = document.getElementById('box-items-grid');
+  document.getElementById('box-items-header').textContent =
+    `HOUSE ${boxIdx + 1} · ${box.items.length} ITEM${box.items.length !== 1 ? 'S' : ''}`;
+  if (box.items.length === 0) {
+    grid.innerHTML = '<div class="box-items-empty">Nothing left here.</div>';
+    return;
+  }
+  grid.innerHTML = box.items.map((item, i) => `
+    <div class="box-item-card" style="--item-color:${item.color}">
+      <div class="box-item-icon"><i class="ph-bold ${item.icon}" style="color:${item.color}"></i></div>
+      <div class="box-item-name">${item.name}</div>
+      <div class="box-item-cond">${item.condition} · ${item.rarity.toUpperCase()}</div>
+      <button class="btn-grab" data-item="${i}">GRAB IT</button>
+    </div>
+  `).join('');
+  grid.querySelectorAll('.btn-grab').forEach(btn => {
+    btn.addEventListener('click', () => grabBoxItem(+btn.dataset.item, boxIdx));
+  });
+}
+
+function grabBoxItem(itemIdx, boxIdx) {
+  const box = G.currentSale.boxes[boxIdx];
+  const item = box.items.splice(itemIdx, 1)[0];
+  G.currentSale.openBoxIdx = boxIdx;
+  startHaggle(item);
+}
+
+function closeBox() {
+  document.getElementById('box-items-panel').hidden = true;
+  renderBoxRow();
+  const s = G.currentSale;
+  const allOpened = s.boxes.every(b => b.opened);
+  if (allOpened) {
+    const total = s.keptItems.length;
+    document.getElementById('boxes-done-summary').textContent =
+      total > 0
+        ? `You grabbed ${total} item${total !== 1 ? 's' : ''} from this block.`
+        : 'Nothing caught your eye today.';
+    document.getElementById('boxes-done-panel').hidden = false;
+  }
+}
+
+function appraiseItem() {
+  const APPRAISE_COST = 5;
+  const idx = G.sellSelectedIdx;
+  const item = G.inventory[idx];
+  if (!item || item.appraised) return;
+  if (G.cash < APPRAISE_COST) { showToast('Need $5 to appraise!', 'danger'); return; }
+  G.cash -= APPRAISE_COST;
+  item.appraised = true;
+  updateHUD();
+  const emvEl = document.getElementById('inv-detail-emv');
+  emvEl.textContent = '$' + item.emv.toLocaleString();
+  emvEl.classList.add('appraise-reveal');
+  setTimeout(() => emvEl.classList.remove('appraise-reveal'), 800);
+  selectInvItem(idx);
+  const profit = item.emv - (item.paidPrice || 0);
+  showToast(
+    profit >= 0
+      ? `Worth $${item.emv.toLocaleString()}! +$${profit} margin`
+      : `Worth $${item.emv.toLocaleString()}. Paid $${item.paidPrice || '?'}.`,
+    profit >= 0 ? 'success' : 'danger'
+  );
+}
+
 // ── SALE SCENE ───────────────────────────────────────────────────────
+const SALE_DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const SALE_TIMES = ['8:00 AM','9:00 AM','10:00 AM','11:00 AM'];
+const SALE_WEATHER = ['Sunny','Partly Cloudy','Overcast','Clear'];
+
 function initSale() {
   const s = G.currentSale;
   document.getElementById('sale-location-name').textContent = s.location.label.toUpperCase();
+  renderSaleHeader(s);
   renderSaleTable(s.items);
 }
+
+function renderSaleHeader(s) {
+  const el = document.getElementById('sale-scene-header');
+  if (!el) return;
+  const phase = s.location.phase;
+  const banner = phase === 'estate' ? 'ESTATE SALE · BY APPOINTMENT' : 'GARAGE SALE TODAY';
+  const dayName = SALE_DAYS[(G.day + 5) % 7];
+  const time = pick(SALE_TIMES);
+  const weather = pick(SALE_WEATHER);
+  const items = s.items.length;
+  el.innerHTML = `
+    <div class="sale-scene-banner">${banner}</div>
+    <div class="sale-scene-meta">
+      <span class="sale-scene-meta-item"><i class="ph-bold ph-calendar-blank"></i>${dayName}</span>
+      <span class="sale-scene-meta-item"><i class="ph-bold ph-clock"></i>${time}</span>
+      <span class="sale-scene-meta-item"><i class="ph-bold ph-cloud-sun"></i>${weather}</span>
+      <span class="sale-scene-meta-item"><i class="ph-bold ph-tag"></i>${items} items</span>
+    </div>`;
+}
+const COND_COLORS = { Poor:'#F85149', Fair:'#FCD34D', Good:'#3FB950', Excellent:'#2DD4BF' };
+
 function renderSaleTable(items) {
   const container = document.getElementById('sale-table-items');
   container.innerHTML = '';
@@ -595,11 +838,19 @@ function renderSaleTable(items) {
     const card = document.createElement('div');
     card.className = 'sale-item-card';
     card.style.setProperty('--item-accent', item.color);
+    card.style.animationDelay = `${i * 60}ms`;
+    const condColor = COND_COLORS[item.condition] || '#7D8590';
+    const priceHint = `$${Math.round(item.asking * 0.85)}–$${item.asking}`;
     card.innerHTML = `
       <i class="ph-bold ${item.icon} sale-item-icon" style="color:${item.color}"></i>
       <div class="sale-item-info">
         <div class="sale-item-name">${item.name}</div>
         <div class="sale-item-cat">${item.cat}</div>
+        <div class="sale-item-price">${priceHint}</div>
+        <div style="margin-top:3px">
+          <span class="sale-item-cond-dot" style="background:${condColor}"></span>
+          <span style="font-size:0.68rem;color:${condColor}">${item.condition}</span>
+        </div>
       </div>`;
     card.addEventListener('click', () => {
       G.currentSale.packPullIdx = i;
@@ -775,8 +1026,50 @@ function bindSwipe(card, onSwipe) {
 }
 
 // ── HAGGLING ─────────────────────────────────────────────────────────
+const HAGGLE_TACTICS = [
+  {
+    id: 'condition',
+    label: "It's worn",
+    icon: 'ph-warning',
+    available: item => ['Poor','Fair'].includes(item.condition),
+    effect(h) { h.current = Math.round(h.current * 0.88); },
+    suspicion: +5,
+    npcLines: ["Yeah, it's seen better days...", "Fair point, I guess.", "Can't argue with that."],
+  },
+  {
+    id: 'market',
+    label: "Tough market",
+    icon: 'ph-trend-down',
+    available: () => true,
+    effect(h) { h.current = Math.round(h.current * 0.93); },
+    suspicion: 0,
+    npcLines: ["Things have been slow...", "I've heard that.", "Mm. Maybe."],
+  },
+  {
+    id: 'cash',
+    label: "Cash right now",
+    icon: 'ph-money',
+    available: () => true,
+    effect(h) { h.current = Math.round(h.current * 0.92); },
+    suspicion: -8,
+    npcLines: ["Cash is cash...", "Alright, you got me.", "I do like cash."],
+  },
+  {
+    id: 'disinterest',
+    label: "Might pass",
+    icon: 'ph-hand-palm',
+    available: () => true,
+    effect(h) {
+      if (Math.random() < 0.35) { h.suspicion += 20; return false; }
+      h.current = Math.round(h.current * 0.87);
+    },
+    suspicion: 0,
+    npcLines: ["Well... I'd hate to miss a sale.", "Don't walk away just yet.", "Okay, okay. Let's talk."],
+    bluffLines: ["Nice try.", "I see what you're doing.", "Save it for someone else."],
+  },
+];
+
 function startHaggle(item) {
-  const [lo, hi] = item.asking ? [item.asking, item.asking] : [0, 0];
   G.haggle = {
     item,
     asking: item.asking,
@@ -785,14 +1078,13 @@ function startHaggle(item) {
     round: 1,
     maxRounds: CONFIG.HAGGLE_ROUNDS_MIN + Math.floor(Math.random() * (CONFIG.HAGGLE_ROUNDS_MAX - CONFIG.HAGGLE_ROUNDS_MIN + 1)),
     npcType: G.currentSale?.location?.phase === 'estate' ? 'estate' : 'garage',
+    usedTactics: new Set(),
   };
   showScreen('haggle');
 }
 function initHaggle() {
   const h = G.haggle;
-  // NPC character
   document.getElementById('npc-character-wrap').innerHTML = NPC_SVG[h.npcType] || NPC_SVG.garage;
-  // Item card
   const rc = RARITY_COLORS[h.item.rarity];
   document.getElementById('haggle-item-card').innerHTML = `
     <i class="ph-bold ${h.item.icon}" style="color:${h.item.color}; font-size:2.8rem"></i>
@@ -804,12 +1096,61 @@ function initHaggle() {
   document.getElementById('npc-speech').textContent = pick(NPC_LINES.neutral);
   document.getElementById('btn-accept-counter').hidden = true;
 
-  // Slider setup
   const slider = document.getElementById('offer-slider');
   slider.min = Math.max(1, Math.round(h.asking * 0.10));
   slider.max = Math.round(h.asking * 1.15);
   slider.value = Math.round(h.asking * 0.55);
   updateOfferDisplay(+slider.value);
+  renderTactics();
+}
+
+function renderTactics() {
+  const row = document.getElementById('tactic-row');
+  if (!row) return;
+  const h = G.haggle;
+  if (!h) return;
+  row.innerHTML = HAGGLE_TACTICS
+    .filter(t => t.available(h.item))
+    .map(t => {
+      const used = h.usedTactics.has(t.id);
+      return `<button class="tactic-btn" data-tactic="${t.id}" ${used ? 'disabled' : ''}>
+        <i class="ph-bold ${t.icon}"></i>
+        <span>${t.label}</span>
+      </button>`;
+    }).join('');
+  row.querySelectorAll('.tactic-btn:not([disabled])').forEach(btn => {
+    btn.addEventListener('click', () => useTactic(btn.dataset.tactic));
+  });
+}
+
+function useTactic(tacticId) {
+  const h = G.haggle;
+  if (!h || h.usedTactics.has(tacticId)) return;
+  h.usedTactics.add(tacticId);
+
+  const tactic = HAGGLE_TACTICS.find(t => t.id === tacticId);
+  if (!tactic) return;
+
+  const bluffCalled = tactic.effect(h) === false;
+  const suspDelta = bluffCalled ? 20 : tactic.suspicion;
+  h.suspicion = Math.max(0, Math.min(100, h.suspicion + suspDelta));
+
+  const line = bluffCalled
+    ? pick(tactic.bluffLines || tactic.npcLines)
+    : pick(tactic.npcLines);
+
+  document.getElementById('suspicion-fill').style.width = h.suspicion + '%';
+  setNpcExpression(Math.min(3, Math.floor(h.suspicion / 25)));
+  document.getElementById('npc-speech').textContent = line;
+  document.getElementById('haggle-asking-price').textContent = `$${h.current}`;
+  updateOfferDisplay(+document.getElementById('offer-slider').value);
+  renderTactics();
+
+  if (h.suspicion >= CONFIG.SUSPICION_THRESHOLD) {
+    document.getElementById('npc-speech').textContent = pick(NPC_LINES.hostile);
+    animateShake('#screen-haggle .haggle-layout');
+    setTimeout(() => endHaggle(false), 1600);
+  }
 }
 function updateOfferDisplay(val) {
   document.getElementById('offer-display').textContent = '$' + val.toLocaleString();
@@ -900,11 +1241,14 @@ function completeSale(price) {
   const item = G.haggle.item;
   if (price > G.cash) { showToast('Not enough cash!', 'danger'); return; }
   G.cash -= price;
+  item.paidPrice = price;
+  item.appraised = !G.currentSale?.isBoxFlow;
   G.inventory.push(item);
   G.stats.deals++;
   G.totalEarned += item.displayEmv;
   if (!G.bestFind || item.displayEmv > G.bestFind.displayEmv) G.bestFind = item;
   item.haggled = true;
+  if (G.currentSale?.isBoxFlow) G.currentSale.keptItems.push(item);
   animateCashChange();
   showToast(`Snagged for $${price}!`, 'success');
   checkMilestones();
@@ -912,6 +1256,17 @@ function completeSale(price) {
 }
 
 function endHaggle(success) {
+  if (G.currentSale?.isBoxFlow) {
+    const boxIdx = G.currentSale.openBoxIdx;
+    const box = G.currentSale.boxes[boxIdx];
+    showScreen('boxes');
+    if (box && box.items.length > 0) {
+      openBox(boxIdx);
+    } else {
+      closeBox();
+    }
+    return;
+  }
   showScreen('pack-pull');
   renderFoundTray();
   const allHaggled = G.currentSale.keptItems.every(i => i.haggled);
@@ -939,7 +1294,7 @@ function initAuctionList() {
       </div>
       <div class="unit-card-icons">
         ${preview.map((it,j) => `<div class="unit-icon-preview${j<2?' revealed':''}">
-          <i class="ph-bold ${j<2?it.icon:'ph-question'}" style="color:${j<2?it.color:'#4A2800'}"></i>
+          <i class="ph-bold ${j<2?it.icon:'ph-question'}" style="color:${j<2?it.color:'#484F58'}"></i>
         </div>`).join('')}
       </div>
       <div class="unit-card-meta">
@@ -1246,12 +1601,24 @@ function selectInvItem(idx) {
   det.hidden = false;
   document.getElementById('inv-detail-icon').innerHTML = `<i class="ph-bold ${item.icon}" style="color:${item.color}; font-size:2.5rem"></i>`;
   document.getElementById('inv-detail-name').textContent = item.name;
-  document.getElementById('inv-detail-emv').textContent = '$' + item.emv.toLocaleString();
   document.getElementById('inv-detail-condition').textContent = item.condition + ' · ' + item.rarity.toUpperCase();
   document.getElementById('inv-fake-badge').hidden = !item.isFake;
-  const instant = Math.round(item.emv * CONFIG.SELL_INSTANT_PCT);
-  document.getElementById('sell-instant-price').textContent = '$' + instant.toLocaleString();
-  document.getElementById('sell-ebay-price').textContent = '$' + item.emv.toLocaleString();
+  const appraiseSection = document.getElementById('inv-appraise-section');
+  const sellOpts = document.getElementById('inv-sell-opts');
+  if (item.appraised === false) {
+    document.getElementById('inv-detail-emv').textContent = '???';
+    appraiseSection.hidden = false;
+    sellOpts.style.opacity = '0.3';
+    sellOpts.style.pointerEvents = 'none';
+  } else {
+    document.getElementById('inv-detail-emv').textContent = '$' + item.emv.toLocaleString();
+    appraiseSection.hidden = true;
+    sellOpts.style.opacity = '';
+    sellOpts.style.pointerEvents = '';
+    const instant = Math.round(item.emv * CONFIG.SELL_INSTANT_PCT);
+    document.getElementById('sell-instant-price').textContent = '$' + instant.toLocaleString();
+    document.getElementById('sell-ebay-price').textContent = '$' + item.emv.toLocaleString();
+  }
 }
 function sellInstant() {
   const idx = G.sellSelectedIdx;
@@ -1394,8 +1761,8 @@ function injectPWA() {
     const ctx = c.getContext('2d');
     // Background
     const grad = ctx.createLinearGradient(0, 0, size, size);
-    grad.addColorStop(0, '#1E1100');
-    grad.addColorStop(1, '#0F0A00');
+    grad.addColorStop(0, '#21262D');
+    grad.addColorStop(1, '#0D1117');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
     // Amber circle
@@ -1404,7 +1771,7 @@ function injectPWA() {
     ctx.fillStyle = '#F59E0B';
     ctx.fill();
     // Text
-    ctx.fillStyle = '#0F0A00';
+    ctx.fillStyle = '#0D1117';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = `bold ${size*0.28}px 'Bebas Neue', Impact, sans-serif`;
@@ -1417,7 +1784,7 @@ function injectPWA() {
     description: 'Buy low. Sell high. Survive.',
     start_url: './', display: 'standalone',
     orientation: 'portrait-primary',
-    background_color: '#0F0A00', theme_color: '#F59E0B',
+    background_color: '#0D1117', theme_color: '#F59E0B',
     icons: [
       { src: makeIcon(192), sizes:'192x192', type:'image/png' },
       { src: makeIcon(512), sizes:'512x512', type:'image/png' },
@@ -1454,6 +1821,21 @@ function bindEvents() {
 
   // Map
   document.getElementById('btn-open-inventory').addEventListener('click', () => showScreen('inventory'));
+
+  // Neighborhood sheet
+  document.getElementById('btn-travel-go').addEventListener('click', () => {
+    if (G._pendingNeighborhood) startTravel(G._pendingNeighborhood);
+  });
+  document.getElementById('btn-travel-cancel').addEventListener('click', () => hideNeighborhoodInfo());
+  document.getElementById('nbhood-sheet-backdrop').addEventListener('click', () => hideNeighborhoodInfo());
+
+  // Boxes screen
+  document.getElementById('boxes-leave').addEventListener('click', () => advanceLocation());
+  document.getElementById('btn-close-box').addEventListener('click', () => closeBox());
+  document.getElementById('btn-leave-neighborhood').addEventListener('click', () => advanceLocation());
+
+  // Appraise
+  document.getElementById('btn-appraise').addEventListener('click', () => appraiseItem());
 
   // Sale
   document.getElementById('sale-back').addEventListener('click', () => advanceLocation());
