@@ -680,6 +680,16 @@ input  { font-family: var(--font-body); outline: none; border: none; }
   color: var(--muted); text-align: center;
 }
 .haggle-asking span { color: var(--cream); }
+.haggle-seller-read {
+  text-align: center; font-size: 0.72rem; font-weight: 600;
+  letter-spacing: 0.3px; margin-top: 4px;
+  padding: 3px 10px; border-radius: 20px; align-self: center;
+  background: var(--surface-2); color: var(--muted);
+}
+.haggle-seller-read.seller-clueless { color: var(--success); background: var(--success-dim); }
+.haggle-seller-read.seller-unsure   { color: var(--blue);    background: rgba(96,165,250,0.15); }
+.haggle-seller-read.seller-savvy    { color: var(--amber);   background: var(--amber-glow); }
+.haggle-seller-read.seller-expert   { color: var(--danger);  background: var(--danger-dim); }
 .round-indicator {
   font-size: 0.75rem; color: var(--muted-2); text-align: center;
 }
