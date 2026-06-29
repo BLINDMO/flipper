@@ -700,20 +700,26 @@ function initBoxes() {
     `${s.boxes.length} HOUSE${s.boxes.length !== 1 ? 'S' : ''} ON THIS BLOCK`;
   document.getElementById('box-items-panel').hidden = true;
   document.getElementById('boxes-done-panel').hidden = true;
+  document.getElementById('screen-boxes').classList.remove('browsing');
   renderBoxRow();
 }
 
 function renderBoxRow() {
   const s = G.currentSale;
   const row = document.getElementById('boxes-house-row');
-  row.innerHTML = s.boxes.map((box, i) => `
-    <div class="house-box${box.opened ? ' visited' : ''}" data-idx="${i}">
+  const browsing = !document.getElementById('box-items-panel').hidden;
+  row.innerHTML = s.boxes.map((box, i) => {
+    const isActive = browsing && i === s.openBoxIdx;
+    const cls = isActive ? 'active' : (box.opened ? 'visited' : '');
+    const icon = isActive ? 'ph-door-open' : (box.opened ? 'ph-check-circle' : 'ph-house');
+    return `
+    <div class="house-box${cls ? ' ' + cls : ''}" data-idx="${i}">
       <div class="house-box-icon">
-        <i class="ph-bold ${box.opened ? 'ph-check-circle' : 'ph-house'}"></i>
+        <i class="ph-bold ${icon}"></i>
       </div>
       <div class="house-box-label">House ${i + 1}</div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
   row.querySelectorAll('.house-box').forEach(el => {
     el.addEventListener('click', () => openBox(+el.dataset.idx));
   });
@@ -724,12 +730,13 @@ function openBox(boxIdx) {
   const box = s.boxes[boxIdx];
   s.openBoxIdx = boxIdx;
   box.opened = true;
+  document.getElementById('box-items-panel').hidden = false;
+  document.getElementById('boxes-done-panel').hidden = true;
+  document.getElementById('screen-boxes').classList.add('browsing');
   renderBoxRow();
   document.getElementById('box-items-header').textContent =
     `HOUSE ${boxIdx + 1} · ${box.items.length} ITEM${box.items.length !== 1 ? 'S' : ''}`;
   renderBoxItems(boxIdx);
-  document.getElementById('box-items-panel').hidden = false;
-  document.getElementById('boxes-done-panel').hidden = true;
 }
 
 function renderBoxItems(boxIdx) {
@@ -763,6 +770,7 @@ function grabBoxItem(itemIdx, boxIdx) {
 
 function closeBox() {
   document.getElementById('box-items-panel').hidden = true;
+  document.getElementById('screen-boxes').classList.remove('browsing');
   renderBoxRow();
   const s = G.currentSale;
   const allOpened = s.boxes.every(b => b.opened);
