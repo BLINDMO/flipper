@@ -423,12 +423,37 @@ function showScreen(phase) {
 // ── ITEM FACTORY ────────────────────────────────────────────────────
 const CONDITIONS = ['Poor','Fair','Good','Excellent'];
 const COND_MODS  = [-0.30, -0.10, 0, +0.15];
+
+// How well does THIS seller know what they have? Assigned per item instance,
+// at random — independent of the house or neighborhood. This is what makes a
+// deal good or bad: a clueless seller underprices a treasure, while an expert
+// prices above value and won't budge. Drives asking price, negotiation floor,
+// and how fast suspicion climbs.
+const SELLER_TIERS = [
+  { id:'clueless', label:'No idea what they have', weight:30, askMul:[0.20,0.50], floorFrac:0.50, suspMul:0.35,
+    tell:"Honestly, no clue what it's worth. Just want it gone — make me an offer." },
+  { id:'unsure',   label:'Vague sense of value',   weight:34, askMul:[0.55,0.85], floorFrac:0.64, suspMul:0.80,
+    tell:"Might be worth a little something. What were you thinking?" },
+  { id:'savvy',    label:'Knows the market',       weight:26, askMul:[0.90,1.12], floorFrac:0.82, suspMul:1.35,
+    tell:"I know what I've got here. Don't bother lowballing me." },
+  { id:'expert',   label:'Had it appraised',       weight:10, askMul:[1.05,1.35], floorFrac:0.93, suspMul:1.95,
+    tell:"This has been professionally appraised. The price is firm." },
+];
+function pickSellerTier() {
+  const total = SELLER_TIERS.reduce((s, t) => s + t.weight, 0);
+  let r = Math.random() * total;
+  for (const t of SELLER_TIERS) { if ((r -= t.weight) <= 0) return t; }
+  return SELLER_TIERS[1];
+}
+
 function createItem(tpl) {
   const ci = Math.floor(Math.random() * 4);
   const emv = Math.round(tpl.baseEMV * (1 + COND_MODS[ci]));
-  const [lo, hi] = tpl.askRange;
-  const asking = Math.round(emv * (lo + Math.random() * (hi - lo)));
   const isFake = tpl.fake && Math.random() < 0.20;
+  // Seller's knowledge sets the asking price relative to true value.
+  const tier = pickSellerTier();
+  const [amlo, amhi] = tier.askMul;
+  const asking = Math.max(1, Math.round(emv * (amlo + Math.random() * (amhi - amlo))));
   return {
     uid: tpl.id + '_' + Date.now() + Math.floor(Math.random()*9999),
     id: tpl.id, name: tpl.name, cat: tpl.cat,
@@ -437,6 +462,7 @@ function createItem(tpl) {
     emv:        isFake ? 5 : emv,
     displayEmv: emv,
     asking, isFake, revealed: false, listed: false,
+    seller: { id: tier.id, label: tier.label, floorFrac: tier.floorFrac, suspMul: tier.suspMul, tell: tier.tell },
     flavor: tpl.flavor,
   };
 }
@@ -1078,10 +1104,14 @@ const HAGGLE_TACTICS = [
 ];
 
 function startHaggle(item) {
+  const seller = item.seller || { floorFrac: 0.55, suspMul: 1, tell: '', label: '' };
   G.haggle = {
     item,
     asking: item.asking,
     current: item.asking,
+    floor: Math.max(1, Math.round(item.asking * seller.floorFrac)),
+    suspMul: seller.suspMul,
+    seller,
     suspicion: 0,
     round: 1,
     maxRounds: CONFIG.HAGGLE_ROUNDS_MIN + Math.floor(Math.random() * (CONFIG.HAGGLE_ROUNDS_MAX - CONFIG.HAGGLE_ROUNDS_MIN + 1)),
@@ -1101,7 +1131,12 @@ function initHaggle() {
   document.getElementById('haggle-asking-price').textContent = `$${h.asking}`;
   document.getElementById('haggle-round').textContent = h.round;
   document.getElementById('haggle-max-round').textContent = h.maxRounds;
-  document.getElementById('npc-speech').textContent = pick(NPC_LINES.neutral);
+  document.getElementById('npc-speech').textContent = h.seller.tell || pick(NPC_LINES.neutral);
+  const readEl = document.getElementById('haggle-seller-read');
+  if (readEl) {
+    readEl.textContent = `Seller: ${h.seller.label}`;
+    readEl.className = 'haggle-seller-read seller-' + (h.seller.id || 'unsure');
+  }
   document.getElementById('btn-accept-counter').hidden = true;
 
   const slider = document.getElementById('offer-slider');
@@ -1140,7 +1175,8 @@ function useTactic(tacticId) {
   if (!tactic) return;
 
   const bluffCalled = tactic.effect(h) === false;
-  const suspDelta = bluffCalled ? 20 : tactic.suspicion;
+  let suspDelta = bluffCalled ? 20 : tactic.suspicion;
+  if (suspDelta > 0) suspDelta = Math.round(suspDelta * (h.suspMul || 1));
   h.suspicion = Math.max(0, Math.min(100, h.suspicion + suspDelta));
 
   const line = bluffCalled
@@ -1183,6 +1219,9 @@ function makeOffer(playerOffer) {
 
   if (h.round === 1 && pct >= 0.95) suspDelta += 12;
 
+  // A clueless seller barely reacts to a lowball; an expert bristles instantly.
+  if (suspDelta > 0) suspDelta = Math.round(suspDelta * (h.suspMul || 1));
+
   h.suspicion = Math.max(0, Math.min(100, h.suspicion + suspDelta));
   h.round++;
 
@@ -1208,9 +1247,9 @@ function makeOffer(playerOffer) {
     return;
   }
 
-  // NPC counter
-  const floor = Math.round(h.asking * 0.50);
-  h.current = Math.max(floor, Math.round(h.current * 0.95));
+  // NPC counter — they concede toward their own floor, which is set by how
+  // well they know the item's value (clueless caves; expert holds firm).
+  h.current = Math.max(h.floor, Math.round(h.current * 0.95));
   document.getElementById('npc-speech').textContent = pick(NPC_LINES.counter(h.current));
 
   if (pct < 0.35) document.getElementById('npc-speech').textContent = pick(NPC_LINES.offended);
