@@ -155,6 +155,46 @@
       </div>
     </div>
 
+    <!-- NEIGHBORHOOD INFO SHEET -->
+    <div id="neighborhood-sheet" class="nbhood-sheet" hidden>
+      <div class="nbhood-sheet-handle"></div>
+      <div class="nbhood-sheet-content">
+        <div class="nbhood-sheet-name" id="nbhood-name"></div>
+        <div class="nbhood-wealth-row">
+          <div class="nbhood-wealth-label" id="nbhood-wealth-label"></div>
+          <div class="nbhood-wealth-dots" id="nbhood-wealth-dots"></div>
+        </div>
+        <div class="nbhood-desc" id="nbhood-desc"></div>
+        <div class="nbhood-meta-row">
+          <div class="nbhood-meta-item">
+            <i class="ph-bold ph-car"></i>
+            <span id="nbhood-gas">$0 gas</span>
+          </div>
+          <div class="nbhood-meta-item">
+            <i class="ph-bold ph-house"></i>
+            <span id="nbhood-houses">1–4 houses</span>
+          </div>
+        </div>
+        <button id="btn-travel-go" class="btn btn-primary">DRIVE THERE</button>
+        <button id="btn-travel-cancel" class="btn btn-secondary btn-sm" style="margin-top:8px">Maybe Later</button>
+      </div>
+    </div>
+    <div id="nbhood-sheet-backdrop" class="nbhood-backdrop" hidden></div>
+
+    <!-- TRAVEL OVERLAY -->
+    <div id="travel-overlay" class="travel-overlay" hidden>
+      <div class="travel-content">
+        <div class="travel-destination" id="travel-dest-name">Riverside</div>
+        <div class="travel-road">
+          <div class="travel-road-lines"></div>
+          <div class="travel-car-wrap">
+            <i class="ph-bold ph-car-profile travel-car-icon"></i>
+          </div>
+        </div>
+        <div class="travel-status">Driving there...</div>
+      </div>
+    </div>
+
     <!-- SALE SCENE -->
     <div id="screen-sale" class="screen">
       <div class="screen-nav">
@@ -167,6 +207,28 @@
           <div class="sale-table-label">TAP AN ITEM TO INSPECT</div>
           <div id="sale-table-items"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- BOXES (GARAGE NEIGHBORHOOD) -->
+    <div id="screen-boxes" class="screen">
+      <div class="screen-nav">
+        <button class="btn-back" id="boxes-leave"><i class="ph-bold ph-arrow-left"></i> Leave</button>
+        <div class="screen-nav-title" id="boxes-location-name"></div>
+      </div>
+      <div class="boxes-header">
+        <div class="boxes-header-label" id="boxes-block-label"></div>
+        <div class="boxes-header-sub">Tap a house to look around</div>
+      </div>
+      <div class="boxes-house-row" id="boxes-house-row"></div>
+      <div class="box-items-panel" id="box-items-panel" hidden>
+        <div class="box-items-header" id="box-items-header"></div>
+        <div class="box-items-grid" id="box-items-grid"></div>
+        <button class="btn btn-secondary btn-sm" id="btn-close-box">Done with this house</button>
+      </div>
+      <div class="boxes-done-panel" id="boxes-done-panel" hidden>
+        <div class="boxes-done-summary" id="boxes-done-summary"></div>
+        <button class="btn btn-primary" id="btn-leave-neighborhood">Leave Neighborhood</button>
       </div>
     </div>
 
@@ -339,7 +401,14 @@
             <div class="inv-fake-badge" id="inv-fake-badge" hidden>COUNTERFEIT</div>
           </div>
         </div>
-        <div class="inv-sell-opts">
+        <div id="inv-appraise-section" hidden>
+          <button id="btn-appraise" class="appraise-btn">
+            <i class="ph-bold ph-magnifying-glass"></i>
+            APPRAISE — $5
+          </button>
+          <div class="appraise-hint">Pay $5 to find out what this is really worth.</div>
+        </div>
+        <div id="inv-sell-opts" class="inv-sell-opts">
           <button id="btn-sell-instant" class="sell-opt">
             <div class="sell-opt-label">SELL NOW</div>
             <div class="sell-opt-price" id="sell-instant-price"></div>

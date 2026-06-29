@@ -363,9 +363,12 @@ const NPC_LINES = {
 };
 
 const NEIGHBORHOODS = [
-  { id:'riverside',  label:'Riverside',      icon:'ph-house',       x:'25%', y:'30%', cost:5,  phase:'garage',  color:'#10B981' },
-  { id:'oldtown',    label:'Old Town',        icon:'ph-buildings',   x:'62%', y:'22%', cost:8,  phase:'garage',  color:'#F59E0B' },
-  { id:'sunset',     label:'Sunset Heights',  icon:'ph-house-line',  x:'78%', y:'58%', cost:10, phase:'garage',  color:'#34D399' },
+  { id:'riverside',  label:'Riverside',      icon:'ph-house',       x:'25%', y:'30%', cost:5,  phase:'garage',  color:'#10B981',
+    wealth:1, wealthLabel:'Working Class', wealthDesc:'A modest neighborhood. Older household items and everyday finds. The occasional hidden gem.', houseMin:1, houseMax:4 },
+  { id:'oldtown',    label:'Old Town',        icon:'ph-buildings',   x:'62%', y:'22%', cost:8,  phase:'garage',  color:'#F59E0B',
+    wealth:2, wealthLabel:'Middle Class', wealthDesc:'Comfortable older homes. Vintage furniture, books, and collectibles are common here.', houseMin:2, houseMax:5 },
+  { id:'sunset',     label:'Sunset Heights',  icon:'ph-house-line',  x:'78%', y:'58%', cost:10, phase:'garage',  color:'#34D399',
+    wealth:3, wealthLabel:'Upper Middle', wealthDesc:'Upscale suburb. Quality items with higher asking prices. Rare finds surface here.', houseMin:1, houseMax:3 },
   { id:'downtown',   label:'The Estates',     icon:'ph-bank',        x:'38%', y:'62%', cost:15, phase:'estate',  color:'#C084FC', unlockAt: CONFIG.UNLOCK_ESTATE },
   { id:'industrial', label:'Industrial Row',  icon:'ph-warehouse',   x:'58%', y:'82%', cost:20, phase:'auction', color:'#F59E0B', unlockAt: CONFIG.UNLOCK_AUCTION },
 ];
@@ -396,6 +399,7 @@ function newGame() {
 // ── SCREEN ROUTER ───────────────────────────────────────────────────
 const SCREEN_INITS = {
   map:           initMap,
+  boxes:         initBoxes,
   sale:          initSale,
   'pack-pull':   initPackPull,
   haggle:        initHaggle,
@@ -447,14 +451,21 @@ function shuffle(a) {
 function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
 function pick(arr)    { return arr[Math.floor(Math.random() * arr.length)]; }
 
-function generateSaleItems(phase, count) {
-  const w = G.cash < 200
-    ? { common: 6, uncommon: 3, rare: 1, legendary: 0.2 }
-    : G.cash < 600
-    ? { common: 4, uncommon: 3, rare: 2, legendary: 0.5 }
-    : G.cash < 2000
-    ? { common: 2, uncommon: 3, rare: 3, legendary: 1 }
-    : { common: 1, uncommon: 2, rare: 3, legendary: 2 };
+function generateSaleItems(phase, count, wealth = 2) {
+  const wMap = {
+    1: { common: 8, uncommon: 2, rare: 0.3, legendary: 0 },
+    2: { common: 5, uncommon: 3, rare: 1.5, legendary: 0.3 },
+    3: { common: 2, uncommon: 3, rare: 3, legendary: 1 },
+  };
+  const w = (phase === 'garage')
+    ? (wMap[wealth] || wMap[2])
+    : G.cash < 200
+      ? { common: 6, uncommon: 3, rare: 1, legendary: 0.2 }
+      : G.cash < 600
+        ? { common: 4, uncommon: 3, rare: 2, legendary: 0.5 }
+        : G.cash < 2000
+          ? { common: 2, uncommon: 3, rare: 3, legendary: 1 }
+          : { common: 1, uncommon: 2, rare: 3, legendary: 2 };
 
   const pool = ITEM_DB.filter(t => {
     if (!t.phases.includes(phase)) return false;
@@ -598,6 +609,10 @@ function renderPhaseProgress() {
   }
 }
 function visitNeighborhood(n) {
+  if (n.phase === 'garage') {
+    showNeighborhoodInfo(n);
+    return;
+  }
   if (G.cash <= n.cost) { showToast('Not enough cash for travel!', 'danger'); return; }
   G.cash -= n.cost;
   updateHUD();
@@ -605,7 +620,7 @@ function visitNeighborhood(n) {
     G.currentAuctionNeighborhood = n;
     showScreen('auction-list');
   } else {
-    const count = n.phase === 'estate' ? 5 + Math.floor(Math.random() * 4) : 3 + Math.floor(Math.random() * 4);
+    const count = 5 + Math.floor(Math.random() * 4);
     G.currentSale = {
       location: n,
       items: generateSaleItems(n.phase, count),
@@ -614,6 +629,174 @@ function visitNeighborhood(n) {
     };
     showScreen('sale');
   }
+}
+
+function showNeighborhoodInfo(n) {
+  if (G.cash <= n.cost) { showToast('Not enough cash for travel!', 'danger'); return; }
+  document.getElementById('nbhood-name').textContent = n.label.toUpperCase();
+  document.getElementById('nbhood-wealth-label').textContent = n.wealthLabel || '';
+  document.getElementById('nbhood-gas').textContent = `$${n.cost} gas`;
+  document.getElementById('nbhood-houses').textContent = `${n.houseMin}–${n.houseMax} houses`;
+  document.getElementById('nbhood-desc').textContent = n.wealthDesc || '';
+  const dots = document.getElementById('nbhood-wealth-dots');
+  dots.innerHTML = [1,2,3].map(i =>
+    `<div class="nbhood-wealth-dot${i <= (n.wealth||1) ? ' lit' : ''}"></div>`
+  ).join('');
+  G._pendingNeighborhood = n;
+  const sheet = document.getElementById('neighborhood-sheet');
+  const backdrop = document.getElementById('nbhood-sheet-backdrop');
+  sheet.hidden = false;
+  backdrop.hidden = false;
+  requestAnimationFrame(() => sheet.classList.add('visible'));
+}
+
+function hideNeighborhoodInfo() {
+  const sheet = document.getElementById('neighborhood-sheet');
+  const backdrop = document.getElementById('nbhood-sheet-backdrop');
+  sheet.classList.remove('visible');
+  setTimeout(() => {
+    sheet.hidden = true;
+    backdrop.hidden = true;
+  }, 350);
+  G._pendingNeighborhood = null;
+}
+
+function startTravel(n) {
+  G.cash -= n.cost;
+  updateHUD();
+  hideNeighborhoodInfo();
+  setTimeout(() => {
+    const overlay = document.getElementById('travel-overlay');
+    document.getElementById('travel-dest-name').textContent = n.label.toUpperCase();
+    overlay.hidden = false;
+    setTimeout(() => {
+      overlay.style.opacity = '0';
+      setTimeout(() => {
+        overlay.hidden = true;
+        overlay.style.opacity = '';
+        enterNeighborhood(n);
+      }, 300);
+    }, 2500);
+  }, 400);
+}
+
+function enterNeighborhood(n) {
+  const numHouses = n.houseMin + Math.floor(Math.random() * (n.houseMax - n.houseMin + 1));
+  const boxes = Array.from({ length: numHouses }, (_, i) => {
+    const itemCount = 1 + Math.floor(Math.random() * 5);
+    return { id: i, opened: false, items: generateSaleItems(n.phase, itemCount, n.wealth) };
+  });
+  G.currentSale = {
+    location: n, isBoxFlow: true,
+    boxes, openBoxIdx: null, keptItems: [], items: [], packPullIdx: 0,
+  };
+  showScreen('boxes');
+}
+
+function initBoxes() {
+  const s = G.currentSale;
+  document.getElementById('boxes-location-name').textContent = s.location.label.toUpperCase();
+  document.getElementById('boxes-block-label').textContent =
+    `${s.boxes.length} HOUSE${s.boxes.length !== 1 ? 'S' : ''} ON THIS BLOCK`;
+  document.getElementById('box-items-panel').hidden = true;
+  document.getElementById('boxes-done-panel').hidden = true;
+  renderBoxRow();
+}
+
+function renderBoxRow() {
+  const s = G.currentSale;
+  const row = document.getElementById('boxes-house-row');
+  row.innerHTML = s.boxes.map((box, i) => `
+    <div class="house-box${box.opened ? ' visited' : ''}" data-idx="${i}">
+      <div class="house-box-icon">
+        <i class="ph-bold ${box.opened ? 'ph-check-circle' : 'ph-house'}"></i>
+      </div>
+      <div class="house-box-label">House ${i + 1}</div>
+    </div>
+  `).join('');
+  row.querySelectorAll('.house-box').forEach(el => {
+    el.addEventListener('click', () => openBox(+el.dataset.idx));
+  });
+}
+
+function openBox(boxIdx) {
+  const s = G.currentSale;
+  const box = s.boxes[boxIdx];
+  s.openBoxIdx = boxIdx;
+  box.opened = true;
+  renderBoxRow();
+  document.getElementById('box-items-header').textContent =
+    `HOUSE ${boxIdx + 1} · ${box.items.length} ITEM${box.items.length !== 1 ? 'S' : ''}`;
+  renderBoxItems(boxIdx);
+  document.getElementById('box-items-panel').hidden = false;
+  document.getElementById('boxes-done-panel').hidden = true;
+}
+
+function renderBoxItems(boxIdx) {
+  const box = G.currentSale.boxes[boxIdx];
+  const grid = document.getElementById('box-items-grid');
+  document.getElementById('box-items-header').textContent =
+    `HOUSE ${boxIdx + 1} · ${box.items.length} ITEM${box.items.length !== 1 ? 'S' : ''}`;
+  if (box.items.length === 0) {
+    grid.innerHTML = '<div class="box-items-empty">Nothing left here.</div>';
+    return;
+  }
+  grid.innerHTML = box.items.map((item, i) => `
+    <div class="box-item-card" style="--item-color:${item.color}">
+      <div class="box-item-icon"><i class="ph-bold ${item.icon}" style="color:${item.color}"></i></div>
+      <div class="box-item-name">${item.name}</div>
+      <div class="box-item-cond">${item.condition} · ${item.rarity.toUpperCase()}</div>
+      <button class="btn-grab" data-item="${i}">GRAB IT</button>
+    </div>
+  `).join('');
+  grid.querySelectorAll('.btn-grab').forEach(btn => {
+    btn.addEventListener('click', () => grabBoxItem(+btn.dataset.item, boxIdx));
+  });
+}
+
+function grabBoxItem(itemIdx, boxIdx) {
+  const box = G.currentSale.boxes[boxIdx];
+  const item = box.items.splice(itemIdx, 1)[0];
+  G.currentSale.openBoxIdx = boxIdx;
+  startHaggle(item);
+}
+
+function closeBox() {
+  document.getElementById('box-items-panel').hidden = true;
+  renderBoxRow();
+  const s = G.currentSale;
+  const allOpened = s.boxes.every(b => b.opened);
+  if (allOpened) {
+    const total = s.keptItems.length;
+    document.getElementById('boxes-done-summary').textContent =
+      total > 0
+        ? `You grabbed ${total} item${total !== 1 ? 's' : ''} from this block.`
+        : 'Nothing caught your eye today.';
+    document.getElementById('boxes-done-panel').hidden = false;
+  }
+}
+
+function appraiseItem() {
+  const APPRAISE_COST = 5;
+  const idx = G.sellSelectedIdx;
+  const item = G.inventory[idx];
+  if (!item || item.appraised) return;
+  if (G.cash < APPRAISE_COST) { showToast('Need $5 to appraise!', 'danger'); return; }
+  G.cash -= APPRAISE_COST;
+  item.appraised = true;
+  updateHUD();
+  const emvEl = document.getElementById('inv-detail-emv');
+  emvEl.textContent = '$' + item.emv.toLocaleString();
+  emvEl.classList.add('appraise-reveal');
+  setTimeout(() => emvEl.classList.remove('appraise-reveal'), 800);
+  selectInvItem(idx);
+  const profit = item.emv - (item.paidPrice || 0);
+  showToast(
+    profit >= 0
+      ? `Worth $${item.emv.toLocaleString()}! +$${profit} margin`
+      : `Worth $${item.emv.toLocaleString()}. Paid $${item.paidPrice || '?'}.`,
+    profit >= 0 ? 'success' : 'danger'
+  );
 }
 
 // ── SALE SCENE ───────────────────────────────────────────────────────
@@ -1058,11 +1241,14 @@ function completeSale(price) {
   const item = G.haggle.item;
   if (price > G.cash) { showToast('Not enough cash!', 'danger'); return; }
   G.cash -= price;
+  item.paidPrice = price;
+  item.appraised = !G.currentSale?.isBoxFlow;
   G.inventory.push(item);
   G.stats.deals++;
   G.totalEarned += item.displayEmv;
   if (!G.bestFind || item.displayEmv > G.bestFind.displayEmv) G.bestFind = item;
   item.haggled = true;
+  if (G.currentSale?.isBoxFlow) G.currentSale.keptItems.push(item);
   animateCashChange();
   showToast(`Snagged for $${price}!`, 'success');
   checkMilestones();
@@ -1070,6 +1256,17 @@ function completeSale(price) {
 }
 
 function endHaggle(success) {
+  if (G.currentSale?.isBoxFlow) {
+    const boxIdx = G.currentSale.openBoxIdx;
+    const box = G.currentSale.boxes[boxIdx];
+    showScreen('boxes');
+    if (box && box.items.length > 0) {
+      openBox(boxIdx);
+    } else {
+      closeBox();
+    }
+    return;
+  }
   showScreen('pack-pull');
   renderFoundTray();
   const allHaggled = G.currentSale.keptItems.every(i => i.haggled);
@@ -1404,12 +1601,24 @@ function selectInvItem(idx) {
   det.hidden = false;
   document.getElementById('inv-detail-icon').innerHTML = `<i class="ph-bold ${item.icon}" style="color:${item.color}; font-size:2.5rem"></i>`;
   document.getElementById('inv-detail-name').textContent = item.name;
-  document.getElementById('inv-detail-emv').textContent = '$' + item.emv.toLocaleString();
   document.getElementById('inv-detail-condition').textContent = item.condition + ' · ' + item.rarity.toUpperCase();
   document.getElementById('inv-fake-badge').hidden = !item.isFake;
-  const instant = Math.round(item.emv * CONFIG.SELL_INSTANT_PCT);
-  document.getElementById('sell-instant-price').textContent = '$' + instant.toLocaleString();
-  document.getElementById('sell-ebay-price').textContent = '$' + item.emv.toLocaleString();
+  const appraiseSection = document.getElementById('inv-appraise-section');
+  const sellOpts = document.getElementById('inv-sell-opts');
+  if (item.appraised === false) {
+    document.getElementById('inv-detail-emv').textContent = '???';
+    appraiseSection.hidden = false;
+    sellOpts.style.opacity = '0.3';
+    sellOpts.style.pointerEvents = 'none';
+  } else {
+    document.getElementById('inv-detail-emv').textContent = '$' + item.emv.toLocaleString();
+    appraiseSection.hidden = true;
+    sellOpts.style.opacity = '';
+    sellOpts.style.pointerEvents = '';
+    const instant = Math.round(item.emv * CONFIG.SELL_INSTANT_PCT);
+    document.getElementById('sell-instant-price').textContent = '$' + instant.toLocaleString();
+    document.getElementById('sell-ebay-price').textContent = '$' + item.emv.toLocaleString();
+  }
 }
 function sellInstant() {
   const idx = G.sellSelectedIdx;
@@ -1612,6 +1821,21 @@ function bindEvents() {
 
   // Map
   document.getElementById('btn-open-inventory').addEventListener('click', () => showScreen('inventory'));
+
+  // Neighborhood sheet
+  document.getElementById('btn-travel-go').addEventListener('click', () => {
+    if (G._pendingNeighborhood) startTravel(G._pendingNeighborhood);
+  });
+  document.getElementById('btn-travel-cancel').addEventListener('click', () => hideNeighborhoodInfo());
+  document.getElementById('nbhood-sheet-backdrop').addEventListener('click', () => hideNeighborhoodInfo());
+
+  // Boxes screen
+  document.getElementById('boxes-leave').addEventListener('click', () => advanceLocation());
+  document.getElementById('btn-close-box').addEventListener('click', () => closeBox());
+  document.getElementById('btn-leave-neighborhood').addEventListener('click', () => advanceLocation());
+
+  // Appraise
+  document.getElementById('btn-appraise').addEventListener('click', () => appraiseItem());
 
   // Sale
   document.getElementById('sale-back').addEventListener('click', () => advanceLocation());
