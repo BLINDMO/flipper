@@ -44,11 +44,11 @@
           <span id="hud-inv">0/20</span>
         </div>
       </div>
-      <div class="map-header">
-        <h2 class="map-title">WHERE TO TODAY?</h2>
-        <div class="map-subtitle">Pick a neighborhood · <span id="map-locs-left">3</span> stops left</div>
-      </div>
       <div class="map-canvas">
+        <div class="map-header-overlay">
+          <h2 class="map-title">WHERE TO TODAY?</h2>
+          <div class="map-subtitle">Pick a neighborhood · <span id="map-locs-left">3</span> stops left</div>
+        </div>
         <svg class="map-bg-svg" viewBox="0 0 430 320" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
           <!-- base ground -->
           <rect width="430" height="320" fill="#0D1520"/>
@@ -146,12 +146,14 @@
           <circle cx="249" cy="262" r="22" fill="rgba(245,158,11,0.04)"/>
         </svg>
         <div id="map-pins"></div>
-      </div>
-      <div id="map-phase-progress"></div>
-      <div class="map-actions">
-        <button id="btn-open-inventory" class="btn btn-secondary btn-sm">
-          <i class="ph-bold ph-briefcase"></i> Inventory
-        </button>
+        <div class="map-bottom-overlay">
+          <div id="map-phase-progress"></div>
+          <div class="map-actions">
+            <button id="btn-open-inventory" class="btn btn-secondary btn-sm">
+              <i class="ph-bold ph-briefcase"></i> Inventory
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
