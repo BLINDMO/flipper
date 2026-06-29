@@ -448,12 +448,46 @@ function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
 function pick(arr)    { return arr[Math.floor(Math.random() * arr.length)]; }
 
 function generateSaleItems(phase, count) {
+  const w = G.cash < 200
+    ? { common: 6, uncommon: 3, rare: 1, legendary: 0.2 }
+    : G.cash < 600
+    ? { common: 4, uncommon: 3, rare: 2, legendary: 0.5 }
+    : G.cash < 2000
+    ? { common: 2, uncommon: 3, rare: 3, legendary: 1 }
+    : { common: 1, uncommon: 2, rare: 3, legendary: 2 };
+
   const pool = ITEM_DB.filter(t => {
     if (!t.phases.includes(phase)) return false;
     if (t.ultraRare) return Math.random() < 0.005;
     return true;
   });
-  return shuffle(pool).slice(0, count).map(createItem);
+
+  const weighted = [];
+  pool.forEach(item => {
+    const weight = Math.round((w[item.rarity] || 1) * 10);
+    for (let i = 0; i < weight; i++) weighted.push(item);
+  });
+
+  shuffle(weighted);
+  const seen = new Set();
+  const selected = [];
+  for (const item of weighted) {
+    if (!seen.has(item.id) && selected.length < count) {
+      seen.add(item.id);
+      selected.push(item);
+    }
+  }
+
+  // Guarantee at least 1 affordable item early game
+  if (G.cash < 300 && selected.length > 1) {
+    const hasAffordable = selected.some(it => it.baseEMV * 0.7 <= G.cash * 0.6);
+    if (!hasAffordable) {
+      const cheap = pool.filter(t => t.rarity === 'common' && t.baseEMV < 50);
+      if (cheap.length) selected[selected.length - 1] = cheap[Math.floor(Math.random() * cheap.length)];
+    }
+  }
+
+  return selected.map(createItem);
 }
 function generateAuctionUnit(phase) {
   const count = 6 + Math.floor(Math.random() * 5); // 6-10 items
@@ -583,11 +617,37 @@ function visitNeighborhood(n) {
 }
 
 // ── SALE SCENE ───────────────────────────────────────────────────────
+const SALE_DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const SALE_TIMES = ['8:00 AM','9:00 AM','10:00 AM','11:00 AM'];
+const SALE_WEATHER = ['Sunny','Partly Cloudy','Overcast','Clear'];
+
 function initSale() {
   const s = G.currentSale;
   document.getElementById('sale-location-name').textContent = s.location.label.toUpperCase();
+  renderSaleHeader(s);
   renderSaleTable(s.items);
 }
+
+function renderSaleHeader(s) {
+  const el = document.getElementById('sale-scene-header');
+  if (!el) return;
+  const phase = s.location.phase;
+  const banner = phase === 'estate' ? 'ESTATE SALE · BY APPOINTMENT' : 'GARAGE SALE TODAY';
+  const dayName = SALE_DAYS[(G.day + 5) % 7];
+  const time = pick(SALE_TIMES);
+  const weather = pick(SALE_WEATHER);
+  const items = s.items.length;
+  el.innerHTML = `
+    <div class="sale-scene-banner">${banner}</div>
+    <div class="sale-scene-meta">
+      <span class="sale-scene-meta-item"><i class="ph-bold ph-calendar-blank"></i>${dayName}</span>
+      <span class="sale-scene-meta-item"><i class="ph-bold ph-clock"></i>${time}</span>
+      <span class="sale-scene-meta-item"><i class="ph-bold ph-cloud-sun"></i>${weather}</span>
+      <span class="sale-scene-meta-item"><i class="ph-bold ph-tag"></i>${items} items</span>
+    </div>`;
+}
+const COND_COLORS = { Poor:'#F85149', Fair:'#FCD34D', Good:'#3FB950', Excellent:'#2DD4BF' };
+
 function renderSaleTable(items) {
   const container = document.getElementById('sale-table-items');
   container.innerHTML = '';
@@ -595,11 +655,19 @@ function renderSaleTable(items) {
     const card = document.createElement('div');
     card.className = 'sale-item-card';
     card.style.setProperty('--item-accent', item.color);
+    card.style.animationDelay = `${i * 60}ms`;
+    const condColor = COND_COLORS[item.condition] || '#7D8590';
+    const priceHint = `$${Math.round(item.asking * 0.85)}–$${item.asking}`;
     card.innerHTML = `
       <i class="ph-bold ${item.icon} sale-item-icon" style="color:${item.color}"></i>
       <div class="sale-item-info">
         <div class="sale-item-name">${item.name}</div>
         <div class="sale-item-cat">${item.cat}</div>
+        <div class="sale-item-price">${priceHint}</div>
+        <div style="margin-top:3px">
+          <span class="sale-item-cond-dot" style="background:${condColor}"></span>
+          <span style="font-size:0.68rem;color:${condColor}">${item.condition}</span>
+        </div>
       </div>`;
     card.addEventListener('click', () => {
       G.currentSale.packPullIdx = i;
@@ -775,8 +843,50 @@ function bindSwipe(card, onSwipe) {
 }
 
 // ── HAGGLING ─────────────────────────────────────────────────────────
+const HAGGLE_TACTICS = [
+  {
+    id: 'condition',
+    label: "It's worn",
+    icon: 'ph-warning',
+    available: item => ['Poor','Fair'].includes(item.condition),
+    effect(h) { h.current = Math.round(h.current * 0.88); },
+    suspicion: +5,
+    npcLines: ["Yeah, it's seen better days...", "Fair point, I guess.", "Can't argue with that."],
+  },
+  {
+    id: 'market',
+    label: "Tough market",
+    icon: 'ph-trend-down',
+    available: () => true,
+    effect(h) { h.current = Math.round(h.current * 0.93); },
+    suspicion: 0,
+    npcLines: ["Things have been slow...", "I've heard that.", "Mm. Maybe."],
+  },
+  {
+    id: 'cash',
+    label: "Cash right now",
+    icon: 'ph-money',
+    available: () => true,
+    effect(h) { h.current = Math.round(h.current * 0.92); },
+    suspicion: -8,
+    npcLines: ["Cash is cash...", "Alright, you got me.", "I do like cash."],
+  },
+  {
+    id: 'disinterest',
+    label: "Might pass",
+    icon: 'ph-hand-palm',
+    available: () => true,
+    effect(h) {
+      if (Math.random() < 0.35) { h.suspicion += 20; return false; }
+      h.current = Math.round(h.current * 0.87);
+    },
+    suspicion: 0,
+    npcLines: ["Well... I'd hate to miss a sale.", "Don't walk away just yet.", "Okay, okay. Let's talk."],
+    bluffLines: ["Nice try.", "I see what you're doing.", "Save it for someone else."],
+  },
+];
+
 function startHaggle(item) {
-  const [lo, hi] = item.asking ? [item.asking, item.asking] : [0, 0];
   G.haggle = {
     item,
     asking: item.asking,
@@ -785,14 +895,13 @@ function startHaggle(item) {
     round: 1,
     maxRounds: CONFIG.HAGGLE_ROUNDS_MIN + Math.floor(Math.random() * (CONFIG.HAGGLE_ROUNDS_MAX - CONFIG.HAGGLE_ROUNDS_MIN + 1)),
     npcType: G.currentSale?.location?.phase === 'estate' ? 'estate' : 'garage',
+    usedTactics: new Set(),
   };
   showScreen('haggle');
 }
 function initHaggle() {
   const h = G.haggle;
-  // NPC character
   document.getElementById('npc-character-wrap').innerHTML = NPC_SVG[h.npcType] || NPC_SVG.garage;
-  // Item card
   const rc = RARITY_COLORS[h.item.rarity];
   document.getElementById('haggle-item-card').innerHTML = `
     <i class="ph-bold ${h.item.icon}" style="color:${h.item.color}; font-size:2.8rem"></i>
@@ -804,12 +913,61 @@ function initHaggle() {
   document.getElementById('npc-speech').textContent = pick(NPC_LINES.neutral);
   document.getElementById('btn-accept-counter').hidden = true;
 
-  // Slider setup
   const slider = document.getElementById('offer-slider');
   slider.min = Math.max(1, Math.round(h.asking * 0.10));
   slider.max = Math.round(h.asking * 1.15);
   slider.value = Math.round(h.asking * 0.55);
   updateOfferDisplay(+slider.value);
+  renderTactics();
+}
+
+function renderTactics() {
+  const row = document.getElementById('tactic-row');
+  if (!row) return;
+  const h = G.haggle;
+  if (!h) return;
+  row.innerHTML = HAGGLE_TACTICS
+    .filter(t => t.available(h.item))
+    .map(t => {
+      const used = h.usedTactics.has(t.id);
+      return `<button class="tactic-btn" data-tactic="${t.id}" ${used ? 'disabled' : ''}>
+        <i class="ph-bold ${t.icon}"></i>
+        <span>${t.label}</span>
+      </button>`;
+    }).join('');
+  row.querySelectorAll('.tactic-btn:not([disabled])').forEach(btn => {
+    btn.addEventListener('click', () => useTactic(btn.dataset.tactic));
+  });
+}
+
+function useTactic(tacticId) {
+  const h = G.haggle;
+  if (!h || h.usedTactics.has(tacticId)) return;
+  h.usedTactics.add(tacticId);
+
+  const tactic = HAGGLE_TACTICS.find(t => t.id === tacticId);
+  if (!tactic) return;
+
+  const bluffCalled = tactic.effect(h) === false;
+  const suspDelta = bluffCalled ? 20 : tactic.suspicion;
+  h.suspicion = Math.max(0, Math.min(100, h.suspicion + suspDelta));
+
+  const line = bluffCalled
+    ? pick(tactic.bluffLines || tactic.npcLines)
+    : pick(tactic.npcLines);
+
+  document.getElementById('suspicion-fill').style.width = h.suspicion + '%';
+  setNpcExpression(Math.min(3, Math.floor(h.suspicion / 25)));
+  document.getElementById('npc-speech').textContent = line;
+  document.getElementById('haggle-asking-price').textContent = `$${h.current}`;
+  updateOfferDisplay(+document.getElementById('offer-slider').value);
+  renderTactics();
+
+  if (h.suspicion >= CONFIG.SUSPICION_THRESHOLD) {
+    document.getElementById('npc-speech').textContent = pick(NPC_LINES.hostile);
+    animateShake('#screen-haggle .haggle-layout');
+    setTimeout(() => endHaggle(false), 1600);
+  }
 }
 function updateOfferDisplay(val) {
   document.getElementById('offer-display').textContent = '$' + val.toLocaleString();
@@ -939,7 +1097,7 @@ function initAuctionList() {
       </div>
       <div class="unit-card-icons">
         ${preview.map((it,j) => `<div class="unit-icon-preview${j<2?' revealed':''}">
-          <i class="ph-bold ${j<2?it.icon:'ph-question'}" style="color:${j<2?it.color:'#4A2800'}"></i>
+          <i class="ph-bold ${j<2?it.icon:'ph-question'}" style="color:${j<2?it.color:'#484F58'}"></i>
         </div>`).join('')}
       </div>
       <div class="unit-card-meta">
@@ -1394,8 +1552,8 @@ function injectPWA() {
     const ctx = c.getContext('2d');
     // Background
     const grad = ctx.createLinearGradient(0, 0, size, size);
-    grad.addColorStop(0, '#1E1100');
-    grad.addColorStop(1, '#0F0A00');
+    grad.addColorStop(0, '#21262D');
+    grad.addColorStop(1, '#0D1117');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
     // Amber circle
@@ -1404,7 +1562,7 @@ function injectPWA() {
     ctx.fillStyle = '#F59E0B';
     ctx.fill();
     // Text
-    ctx.fillStyle = '#0F0A00';
+    ctx.fillStyle = '#0D1117';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = `bold ${size*0.28}px 'Bebas Neue', Impact, sans-serif`;
@@ -1417,7 +1575,7 @@ function injectPWA() {
     description: 'Buy low. Sell high. Survive.',
     start_url: './', display: 'standalone',
     orientation: 'portrait-primary',
-    background_color: '#0F0A00', theme_color: '#F59E0B',
+    background_color: '#0D1117', theme_color: '#F59E0B',
     icons: [
       { src: makeIcon(192), sizes:'192x192', type:'image/png' },
       { src: makeIcon(512), sizes:'512x512', type:'image/png' },
