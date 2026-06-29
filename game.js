@@ -3,7 +3,7 @@
 
 // ── CONFIG ─────────────────────────────────────────────────────────
 const CONFIG = {
-  START_CASH:         100,
+  START_CASH:         500,
   OVERHEAD_DAILY:     25,
   OVERHEAD_WEEKLY:    30,
   INVENTORY_MAX:      20,
@@ -14,6 +14,8 @@ const CONFIG = {
   PEEK_SECONDS:       30,
   SELL_INSTANT_PCT:   0.60,
   SELL_EBAY_DAYS:     3,
+  SELL_EBAY_MIN:      0.85,   // online sale floor (after fees), x EMV
+  SELL_EBAY_MAX:      1.15,   // online sale ceiling, x EMV
   UNLOCK_ESTATE:      500,
   UNLOCK_AUCTION:     2000,
   WIN_MILESTONES:     [10000, 50000, 100000],
@@ -543,9 +545,15 @@ function deductOverhead() {
 function resolveEbay() {
   const ready = G.pendingEbay.filter(e => e.resolveDay <= G.day);
   ready.forEach(e => {
-    G.cash += e.item.emv;
-    G.totalEarned += e.item.emv;
-    showToast(`+$${e.item.emv} — ${e.item.name} sold online!`, 'success');
+    const price = e.salePrice ?? e.item.emv;
+    G.cash += price;
+    G.totalEarned += price;
+    // Remove the sold item from inventory so it frees its slot.
+    const i = G.inventory.indexOf(e.item);
+    if (i !== -1) G.inventory.splice(i, 1);
+    const vs = price - e.item.emv;
+    const note = vs >= 0 ? `(over estimate)` : `(under estimate)`;
+    showToast(`+$${price.toLocaleString()} — ${e.item.name} sold online ${note}`, vs >= 0 ? 'success' : 'danger');
   });
   G.pendingEbay = G.pendingEbay.filter(e => e.resolveDay > G.day);
 }
@@ -788,6 +796,10 @@ function renderBoxItems(boxIdx) {
 }
 
 function grabBoxItem(itemIdx, boxIdx) {
+  if (G.inventory.length >= CONFIG.INVENTORY_MAX) {
+    showToast('Inventory full! Sell something first.', 'danger');
+    return;
+  }
   const box = G.currentSale.boxes[boxIdx];
   const item = box.items.splice(itemIdx, 1)[0];
   G.currentSale.openBoxIdx = boxIdx;
@@ -1286,6 +1298,7 @@ function setNpcExpression(lvl) {
 
 function completeSale(price) {
   const item = G.haggle.item;
+  if (G.inventory.length >= CONFIG.INVENTORY_MAX) { showToast('Inventory full! Sell something first.', 'danger'); return; }
   if (price > G.cash) { showToast('Not enough cash!', 'danger'); return; }
   G.cash -= price;
   item.paidPrice = price;
@@ -1664,7 +1677,7 @@ function selectInvItem(idx) {
     sellOpts.style.pointerEvents = '';
     const instant = Math.round(item.emv * CONFIG.SELL_INSTANT_PCT);
     document.getElementById('sell-instant-price').textContent = '$' + instant.toLocaleString();
-    document.getElementById('sell-ebay-price').textContent = '$' + item.emv.toLocaleString();
+    document.getElementById('sell-ebay-price').textContent = '~$' + item.emv.toLocaleString();
   }
 }
 function sellInstant() {
@@ -1685,8 +1698,12 @@ function sellEbay() {
   const item = G.inventory[idx];
   if (item.listed) { showToast('Already listed!'); return; }
   item.listed = true;
-  G.pendingEbay.push({ item, resolveDay: G.day + CONFIG.SELL_EBAY_DAYS });
-  showToast(`Listed! Pays $${item.emv.toLocaleString()} in ${CONFIG.SELL_EBAY_DAYS} days`, 'success');
+  // The market is uncertain: final price lands somewhere around EMV (after
+  // fees), so listing online is a gamble vs. the guaranteed instant sale.
+  const mul = CONFIG.SELL_EBAY_MIN + Math.random() * (CONFIG.SELL_EBAY_MAX - CONFIG.SELL_EBAY_MIN);
+  const salePrice = Math.max(1, Math.round(item.emv * mul));
+  G.pendingEbay.push({ item, resolveDay: G.day + CONFIG.SELL_EBAY_DAYS, salePrice });
+  showToast(`Listed online — sells in ${CONFIG.SELL_EBAY_DAYS} days`, 'success');
   initInventory();
 }
 
