@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F59E0B">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Thrift &amp; Thrive">
+  <title>Thrift &amp; Thrive</title>
+  <link id="manifest-placeholder" rel="manifest" href="#">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- TITLE -->
+    <div id="screen-title" class="screen active">
+      <div class="title-bg"></div>
+      <div class="title-content">
+        <div class="title-eyebrow">A THRIFTER'S SURVIVAL GAME</div>
+        <h1 class="title-logo">THRIFT<br><span class="title-amp">&amp;</span><br>THRIVE</h1>
+        <p class="title-tagline">Buy low. Sell high. Don't go broke.</p>
+        <button id="btn-start" class="btn btn-primary btn-xl">START HUSTLE</button>
+        <div class="title-footer">Day 1 · $100 · 20 item capacity</div>
+      </div>
+    </div>
+
+    <!-- MAP -->
+    <div id="screen-map" class="screen">
+      <div class="hud-strip">
+        <div class="hud-item">
+          <i class="ph-bold ph-money-wavy"></i>
+          <span id="hud-cash">$100</span>
+        </div>
+        <div class="hud-item hud-day">
+          Day <span id="hud-day">1</span>
+        </div>
+        <div class="hud-item">
+          <i class="ph-bold ph-package"></i>
+          <span id="hud-inv">0/20</span>
+        </div>
+      </div>
+      <div class="map-header">
+        <h2 class="map-title">WHERE TO TODAY?</h2>
+        <div class="map-subtitle">Pick a neighborhood · <span id="map-locs-left">3</span> stops left</div>
+      </div>
+      <div class="map-canvas">
+        <div class="map-road map-road-h" style="top:35%"></div>
+        <div class="map-road map-road-h" style="top:68%"></div>
+        <div class="map-road map-road-v" style="left:30%"></div>
+        <div class="map-road map-road-v" style="left:65%"></div>
+        <div id="map-pins"></div>
+      </div>
+      <div id="map-phase-progress"></div>
+      <div class="map-actions">
+        <button id="btn-open-inventory" class="btn btn-secondary btn-sm">
+          <i class="ph-bold ph-briefcase"></i> Inventory
+        </button>
+      </div>
+    </div>
+
+    <!-- SALE SCENE -->
+    <div id="screen-sale" class="screen">
+      <div class="screen-nav">
+        <button class="btn-back" id="sale-back"><i class="ph-bold ph-arrow-left"></i> Leave</button>
+        <div class="screen-nav-title" id="sale-location-name"></div>
+      </div>
+      <div class="sale-scene">
+        <div class="sale-table-surface">
+          <div class="sale-table-label">TAP AN ITEM TO INSPECT</div>
+          <div id="sale-table-items"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PACK PULL -->
+    <div id="screen-pack-pull" class="screen">
+      <div class="screen-nav">
+        <button class="btn-back" id="pack-back"><i class="ph-bold ph-arrow-left"></i> Back</button>
+        <div class="screen-nav-title">FLIP TO REVEAL</div>
+      </div>
+      <div class="swipe-hint-row">
+        <span class="swipe-hint-pass"><i class="ph-bold ph-x-circle"></i> PASS</span>
+        <span class="swipe-hint-keep"><i class="ph-bold ph-check-circle"></i> KEEP</span>
+      </div>
+      <div id="card-stack-area">
+        <div id="card-stack"></div>
+        <div class="card-stack-counter"><span id="cards-remaining">0</span> items left</div>
+      </div>
+      <div id="found-tray-section" hidden>
+        <div class="found-tray-header">ITEMS TO NEGOTIATE</div>
+        <div id="found-tray"></div>
+        <button id="btn-leave-sale" class="btn btn-secondary btn-sm">Leave Sale</button>
+      </div>
+    </div>
+
+    <!-- HAGGLE -->
+    <div id="screen-haggle" class="screen">
+      <div class="screen-nav">
+        <button class="btn-back" id="haggle-back"><i class="ph-bold ph-arrow-left"></i> Walk Away</button>
+        <div class="screen-nav-title">NEGOTIATION</div>
+      </div>
+      <div class="haggle-layout">
+        <div class="npc-panel">
+          <div id="npc-character-wrap"></div>
+          <div class="suspicion-label">SUSPICION</div>
+          <div class="suspicion-track">
+            <div class="suspicion-fill" id="suspicion-fill" style="width:0%"></div>
+          </div>
+          <div class="npc-speech-bubble" id="npc-speech"></div>
+        </div>
+        <div class="haggle-item-panel">
+          <div id="haggle-item-card"></div>
+          <div class="haggle-asking">ASKING: <span id="haggle-asking-price"></span></div>
+          <div class="round-indicator">Round <span id="haggle-round">1</span> of <span id="haggle-max-round">4</span></div>
+        </div>
+      </div>
+      <div class="offer-panel">
+        <div class="offer-display-row">
+          <span class="offer-display-label">YOUR OFFER</span>
+          <span class="offer-display-val" id="offer-display">$0</span>
+        </div>
+        <input type="range" id="offer-slider" class="offer-slider" min="0" max="1000" step="5" value="0">
+        <div class="offer-hint" id="offer-hint"></div>
+        <div class="offer-btn-row">
+          <button id="btn-make-offer" class="btn btn-primary">MAKE OFFER</button>
+          <button id="btn-accept-counter" class="btn btn-success" hidden>ACCEPT COUNTER</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- AUCTION LIST -->
+    <div id="screen-auction-list" class="screen">
+      <div class="screen-nav">
+        <button class="btn-back" id="auction-list-back"><i class="ph-bold ph-arrow-left"></i> Leave</button>
+        <div class="screen-nav-title">STORAGE FACILITY</div>
+      </div>
+      <div class="auction-list-header">
+        <i class="ph-bold ph-warehouse"></i>
+        <div>
+          <div class="auction-facility-name" id="auction-facility-name"></div>
+          <div class="auction-facility-sub">Select a unit to preview</div>
+        </div>
+      </div>
+      <div id="unit-list"></div>
+    </div>
+
+    <!-- AUCTION PEEK -->
+    <div id="screen-auction-peek" class="screen">
+      <div class="screen-nav">
+        <button class="btn-back" id="peek-back"><i class="ph-bold ph-arrow-left"></i> Skip</button>
+        <div class="screen-nav-title">UNIT PREVIEW</div>
+      </div>
+      <div class="peek-header">
+        <div class="peek-unit-num">UNIT #<span id="peek-unit-num"></span></div>
+        <div class="peek-timer-wrap">
+          <svg class="timer-svg" viewBox="0 0 44 44">
+            <circle cx="22" cy="22" r="19" class="timer-track"/>
+            <circle cx="22" cy="22" r="19" class="timer-progress" id="timer-circle"/>
+          </svg>
+          <span class="timer-val" id="peek-timer-val">30</span>
+        </div>
+      </div>
+      <div class="unit-preview-grid">
+        <div class="unit-blur-layer" id="unit-blur-layer"></div>
+        <div class="revealed-overlay" id="revealed-slots"></div>
+      </div>
+      <div class="peek-estimate">
+        Est. value: <strong id="peek-est-low"></strong> – <strong id="peek-est-high"></strong>
+      </div>
+      <div class="peek-actions">
+        <button id="btn-enter-bid" class="btn btn-primary btn-xl">ENTER BID</button>
+        <button id="btn-skip-unit" class="btn btn-secondary btn-sm">Skip Unit</button>
+      </div>
+    </div>
+
+    <!-- AUCTION BID -->
+    <div id="screen-auction-bid" class="screen">
+      <div class="screen-nav">
+        <div class="screen-nav-title">LIVE AUCTION</div>
+      </div>
+      <div class="bid-current-section">
+        <div class="bid-current-label">CURRENT BID</div>
+        <div class="bid-current-amount" id="bid-current-amount">$0</div>
+        <div class="bid-leader-label" id="bid-leader-label">—</div>
+      </div>
+      <div class="ai-bidder-section">
+        <div class="ai-bidder-label">COMPETING BIDDERS</div>
+        <div class="ai-bidder-row" id="ai-bidder-row"></div>
+      </div>
+      <div class="your-bid-section">
+        <div class="your-bid-label">YOUR BID</div>
+        <div class="bid-input-row">
+          <span class="bid-dollar">$</span>
+          <input type="number" id="bid-input" class="bid-input" min="0" step="10">
+        </div>
+        <div class="bid-min-hint">Minimum: <span id="bid-min-hint">$0</span></div>
+      </div>
+      <div class="bid-action-row">
+        <button id="btn-raise-bid" class="btn btn-primary">RAISE BID</button>
+        <button id="btn-walk-away-bid" class="btn btn-danger btn-sm">Walk Away</button>
+      </div>
+    </div>
+
+    <!-- UNBOXING -->
+    <div id="screen-unboxing" class="screen">
+      <div class="screen-nav">
+        <div class="screen-nav-title">UNBOXING</div>
+        <div class="unbox-counter"><span id="unbox-count">0</span> items</div>
+      </div>
+      <div class="unbox-subhead">Swipe to go through the unit</div>
+      <div id="unbox-stack-area">
+        <div id="unbox-stack"></div>
+      </div>
+    </div>
+
+    <!-- VERDICT -->
+    <div id="screen-verdict" class="screen">
+      <!-- Fully injected by JS per item -->
+    </div>
+
+    <!-- INVENTORY / SELL -->
+    <div id="screen-inventory" class="screen">
+      <div class="screen-nav">
+        <button class="btn-back" id="inv-back"><i class="ph-bold ph-arrow-left"></i> Map</button>
+        <div class="screen-nav-title">INVENTORY</div>
+      </div>
+      <div class="inv-stats">
+        <div class="inv-stat"><span id="inv-used">0</span> / 20 items</div>
+        <div class="inv-stat">Pending: <span id="inv-pending">$0</span></div>
+      </div>
+      <div id="inv-grid" class="inv-grid"></div>
+      <div id="inv-detail" class="inv-detail-panel" hidden>
+        <div class="inv-detail-header">
+          <div class="inv-detail-icon-wrap" id="inv-detail-icon"></div>
+          <div class="inv-detail-info">
+            <div class="inv-detail-name" id="inv-detail-name"></div>
+            <div class="inv-detail-emv">EMV: <span id="inv-detail-emv"></span></div>
+            <div class="inv-detail-condition" id="inv-detail-condition"></div>
+            <div class="inv-fake-badge" id="inv-fake-badge" hidden>COUNTERFEIT</div>
+          </div>
+        </div>
+        <div class="inv-sell-opts">
+          <button id="btn-sell-instant" class="sell-opt">
+            <div class="sell-opt-label">SELL NOW</div>
+            <div class="sell-opt-price" id="sell-instant-price"></div>
+            <div class="sell-opt-note">60% of EMV — instant cash</div>
+          </button>
+          <button id="btn-sell-ebay" class="sell-opt sell-opt-premium">
+            <div class="sell-opt-label">LIST ONLINE</div>
+            <div class="sell-opt-price" id="sell-ebay-price"></div>
+            <div class="sell-opt-note">Full EMV — 3 day wait</div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- GAME OVER -->
+    <div id="screen-game-over" class="screen">
+      <div class="go-content">
+        <div class="go-icon-wrap">
+          <i class="ph-bold ph-piggy-bank go-icon"></i>
+        </div>
+        <div class="go-title">BROKE.</div>
+        <div class="go-sub">The bills caught up with you.</div>
+        <div class="go-stats">
+          <div class="go-stat">Survived <strong id="go-days"></strong> days</div>
+          <div class="go-stat">Total earned: <strong id="go-total-earned"></strong></div>
+          <div class="go-stat">Deals won: <strong id="go-deals"></strong></div>
+          <div class="go-stat">Best find: <strong id="go-best-find"></strong></div>
+        </div>
+        <button id="btn-restart" class="btn btn-primary btn-xl">TRY AGAIN</button>
+      </div>
+    </div>
+
+    <!-- WIN MILESTONE -->
+    <div id="screen-win" class="screen">
+      <div class="win-content">
+        <div class="win-particles" id="win-particles"></div>
+        <div class="win-milestone" id="win-milestone-label"></div>
+        <div class="win-title">THRIVER!</div>
+        <div class="win-stats">
+          <div class="win-stat">Day <span id="win-day"></span></div>
+          <div class="win-stat">Deals: <span id="win-deals"></span></div>
+          <div class="win-stat">Auctions: <span id="win-auctions"></span></div>
+        </div>
+        <button id="btn-keep-going" class="btn btn-primary btn-xl">KEEP HUSTLING</button>
+      </div>
+    </div>
+
+    <!-- TOAST -->
+    <div id="toast" class="toast" hidden></div>
+
+  </div>
+
+  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1/src/bold/index.js" defer></script>
+  <script src="game.js"></script>
+</body>
+</html>
