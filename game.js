@@ -450,7 +450,7 @@ function pick(arr)    { return arr[Math.floor(Math.random() * arr.length)]; }
 function generateSaleItems(phase, count) {
   const pool = ITEM_DB.filter(t => {
     if (!t.phases.includes(phase)) return false;
-    if (t.ultraRare) return Math.random() < 0.03;
+    if (t.ultraRare) return Math.random() < 0.005;
     return true;
   });
   return shuffle(pool).slice(0, count).map(createItem);
